@@ -1,4 +1,9 @@
-# Microsoft BASIC for 6502 Microprocessor - Version 1.1
+# This is a forked version of the Microsoft BASIC for 6502 Microprocessor - Version 1.1
+# Details of the original repository below, released by Microsoft.
+# This is a C17 verion based on the original.
+# Tim Buchalka, December 2025.
+
+# Original contents from forked repository below.
 
 ## Historical Significance
 

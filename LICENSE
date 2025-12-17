@@ -1,6 +1,7 @@
 MIT License 
 
-    Copyright (c) Microsoft Corporation.
+    Original 6502 version, Copyright (c) Microsoft Corporation.
+    C17 version Copyright (c) 2025 Tim Buchalka.
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
