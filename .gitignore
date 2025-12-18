@@ -416,3 +416,18 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# CBASIC project-specific ignores
+
+# David Ahl's BASIC Computer Games (copyrighted, downloaded for testing only)
+# Use test_harness/scripts/download_ahl_games.sh to download these
+test_programs/ahl_games/
+
+# macOS
+.DS_Store
+
+# Python virtual environments
+test_harness/venv/
+
+# Test output files (regenerated on each run)
+test_harness/output/
