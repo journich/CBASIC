@@ -1,0 +1,8 @@
+10 REM Test nested FOR loops
+20 FOR I = 1 TO 3
+30 FOR J = 1 TO 2
+40 PRINT I; ","; J; " ";
+50 NEXT J
+60 PRINT
+70 NEXT I
+80 END

@@ -1,0 +1,4 @@
+10 REM Test PRINT zones
+20 PRINT "A", "B", "C"
+30 PRINT 1, 2, 3
+40 END

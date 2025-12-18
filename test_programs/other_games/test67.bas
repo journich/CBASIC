@@ -1,0 +1,9 @@
+10 REM Test GCD algorithm
+20 LET A = 48
+30 LET B = 18
+40 PRINT "GCD(48, 18) = ";
+50 IF B = 0 THEN PRINT A: GOTO 90
+60 LET T = B
+70 LET B = A - INT(A/B) * B
+80 LET A = T: GOTO 50
+90 END

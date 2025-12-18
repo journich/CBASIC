@@ -1,0 +1,4 @@
+10 REM Test TAN function
+20 PRINT "TAN(0) = "; TAN(0)
+30 PRINT "TAN(0.785) = "; TAN(0.785)
+40 END

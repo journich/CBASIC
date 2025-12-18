@@ -1,0 +1,10 @@
+10 REM Test digit sum
+20 LET N = 12345
+30 LET S = 0
+40 LET T = N
+50 IF T = 0 THEN GOTO 90
+60 LET S = S + T - INT(T/10) * 10
+70 LET T = INT(T/10)
+80 GOTO 50
+90 PRINT "DIGIT SUM OF "; N; " = "; S
+100 END

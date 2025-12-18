@@ -1,0 +1,8 @@
+10 REM Reverse pattern
+20 FOR I = 5 TO 1 STEP -1
+30 FOR J = 1 TO I
+40 PRINT "*";
+50 NEXT J
+60 PRINT
+70 NEXT I
+80 END

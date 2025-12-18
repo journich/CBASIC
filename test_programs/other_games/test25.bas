@@ -1,0 +1,7 @@
+10 REM Simple number guessing game (auto)
+20 LET N = INT(RND(1) * 10) + 1
+30 PRINT "SECRET NUMBER: "; N
+40 LET G = 5
+50 IF G = N THEN PRINT "CORRECT!" : GOTO 70
+60 PRINT "WRONG!"
+70 END

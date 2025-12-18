@@ -1,0 +1,6 @@
+10 REM Test compound conditions
+20 LET A = 5
+30 LET B = 10
+40 IF A > 3 AND B < 20 THEN PRINT "BOTH TRUE"
+50 IF A > 3 OR B > 100 THEN PRINT "AT LEAST ONE TRUE"
+60 END

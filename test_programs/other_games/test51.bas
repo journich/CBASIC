@@ -1,0 +1,4 @@
+10 REM Test LOG function
+20 PRINT "LOG(1) = "; LOG(1)
+30 PRINT "LOG(2.718) = "; LOG(2.718)
+40 END

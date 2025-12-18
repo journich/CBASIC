@@ -1,0 +1,7 @@
+10 REM Multiplication table
+20 LET N = 5
+30 PRINT "MULTIPLICATION TABLE FOR "; N
+40 FOR I = 1 TO 10
+50 PRINT N; " * "; I; " = "; N * I
+60 NEXT I
+70 END

@@ -1,0 +1,7 @@
+10 REM Even/odd checker
+20 FOR I = 1 TO 10
+30 LET R = I - INT(I / 2) * 2
+40 IF R = 0 THEN PRINT I; " EVEN" : GOTO 60
+50 PRINT I; " ODD"
+60 NEXT I
+70 END

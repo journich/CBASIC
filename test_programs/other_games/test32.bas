@@ -1,0 +1,10 @@
+10 REM Simple array test (DIM)
+20 DIM A(5)
+30 FOR I = 0 TO 5
+40 LET A(I) = I * 2
+50 NEXT I
+60 FOR I = 0 TO 5
+70 PRINT A(I);
+80 NEXT I
+90 PRINT
+100 END

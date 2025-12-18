@@ -1,0 +1,6 @@
+10 REM Test RND function
+20 FOR I = 1 TO 5
+30 PRINT INT(RND(1) * 100);
+40 NEXT I
+50 PRINT
+60 END

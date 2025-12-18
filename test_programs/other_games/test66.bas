@@ -1,0 +1,15 @@
+10 REM Test bubble sort
+20 DIM A(5)
+30 A(0) = 5: A(1) = 3: A(2) = 8: A(3) = 1: A(4) = 9
+40 PRINT "BEFORE: ";
+50 FOR I = 0 TO 4: PRINT A(I);: NEXT I
+60 PRINT
+70 FOR I = 0 TO 3
+80 FOR J = 0 TO 3 - I
+90 IF A(J) > A(J+1) THEN T = A(J): A(J) = A(J+1): A(J+1) = T
+100 NEXT J
+110 NEXT I
+120 PRINT "AFTER:  ";
+130 FOR I = 0 TO 4: PRINT A(I);: NEXT I
+140 PRINT
+150 END

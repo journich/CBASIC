@@ -1,0 +1,9 @@
+10 REM Prime number checker
+20 LET N = 17
+30 LET P = 1
+40 FOR I = 2 TO N - 1
+50 IF N - INT(N / I) * I = 0 THEN LET P = 0
+60 NEXT I
+70 IF P = 1 THEN PRINT N; " IS PRIME"
+80 IF P = 0 THEN PRINT N; " IS NOT PRIME"
+90 END

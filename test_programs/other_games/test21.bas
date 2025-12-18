@@ -1,0 +1,4 @@
+10 REM Test SQR function
+20 PRINT "SQR(16) = "; SQR(16)
+30 PRINT "SQR(25) = "; SQR(25)
+40 END

@@ -1,0 +1,9 @@
+10 REM Test perfect numbers
+20 FOR N = 1 TO 30
+30 LET S = 0
+40 FOR I = 1 TO N - 1
+50 IF N - INT(N/I)*I = 0 THEN S = S + I
+60 NEXT I
+70 IF S = N THEN PRINT N; " IS PERFECT"
+80 NEXT N
+90 END

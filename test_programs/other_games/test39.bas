@@ -1,0 +1,13 @@
+10 REM Calculate average
+20 LET S = 0
+30 DIM A(5)
+40 LET A(0) = 10
+50 LET A(1) = 20
+60 LET A(2) = 30
+70 LET A(3) = 40
+80 LET A(4) = 50
+90 FOR I = 0 TO 4
+100 LET S = S + A(I)
+110 NEXT I
+120 PRINT "AVERAGE = "; S / 5
+130 END

@@ -1,0 +1,5 @@
+10 REM Test SIN/COS functions
+20 PRINT "SIN(0) = "; SIN(0)
+30 PRINT "COS(0) = "; COS(0)
+40 PRINT "SIN(1.5708) = "; SIN(1.5708)
+50 END

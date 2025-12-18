@@ -1,0 +1,6 @@
+10 REM Count to 100 by tens
+20 FOR I = 0 TO 100 STEP 10
+30 PRINT I;
+40 NEXT I
+50 PRINT
+60 END

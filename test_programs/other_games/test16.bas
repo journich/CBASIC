@@ -1,0 +1,6 @@
+10 REM Test counting down
+20 FOR I = 5 TO 1 STEP -1
+30 PRINT I;
+40 NEXT I
+50 PRINT " BLASTOFF!"
+60 END

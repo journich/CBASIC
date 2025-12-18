@@ -1,0 +1,7 @@
+10 REM Simple coin flip
+20 FOR I = 1 TO 10
+30 IF RND(1) < 0.5 THEN PRINT "H"; : GOTO 50
+40 PRINT "T";
+50 NEXT I
+60 PRINT
+70 END

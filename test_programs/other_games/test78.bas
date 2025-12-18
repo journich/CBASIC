@@ -1,0 +1,8 @@
+10 REM Test Armstrong numbers
+20 FOR N = 100 TO 999
+30 LET A = INT(N/100)
+40 LET B = INT((N - A*100)/10)
+50 LET C = N - A*100 - B*10
+60 IF A^3 + B^3 + C^3 = N THEN PRINT N; " IS ARMSTRONG"
+70 NEXT N
+80 END

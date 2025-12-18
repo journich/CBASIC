@@ -1,0 +1,7 @@
+10 REM Sum of numbers
+20 LET S = 0
+30 FOR I = 1 TO 10
+40 LET S = S + I
+50 NEXT I
+60 PRINT "SUM 1-10 = "; S
+70 END

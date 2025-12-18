@@ -1,0 +1,9 @@
+10 REM Test palindrome check
+20 LET A$ = "RADAR"
+30 LET B$ = ""
+40 FOR I = LEN(A$) TO 1 STEP -1
+50 B$ = B$ + MID$(A$,I,1)
+60 NEXT I
+70 IF A$ = B$ THEN PRINT A$; " IS A PALINDROME"
+80 IF A$ <> B$ THEN PRINT A$; " IS NOT A PALINDROME"
+90 END
