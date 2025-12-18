@@ -198,7 +198,7 @@ ErrorCode basic_eval_string(BasicState *state, StringDescriptor *result)
  * comparison     -> additive ( ( = | <> | < | > | <= | >= ) additive )*
  * additive       -> multiplicative ( ( + | - ) multiplicative )*
  * multiplicative -> power ( ( * | / ) power )*
- * power          -> unary ( ^ power )?       (right associative)
+ * power          -> unary ( ^ unary )*        (left associative - MS BASIC compatible)
  * unary          -> - unary | + unary | primary
  * primary        -> NUMBER | STRING | VARIABLE | FUNCTION | ( expression )
  */
@@ -574,17 +574,21 @@ static ErrorCode eval_multiplicative(BasicState *state, Value *result)
 }
 
 /*
- * eval_power - Handle ^ (exponentiation) - right associative
+ * eval_power - Handle ^ (exponentiation) - left associative (MS BASIC compatible)
  */
 static ErrorCode eval_power(BasicState *state, Value *result)
 {
     ErrorCode err = eval_unary(state, result);
     if (err != ERR_NONE) return err;
 
-    basic_skip_spaces(state);
+    /* Loop for left-associative behavior: 2^3^2 = (2^3)^2 = 64 */
+    for (;;) {
+        basic_skip_spaces(state);
 
-    char c = basic_peek_char(state);
-    if (c == '^' || c == (char)TOK_POWER) {
+        char c = basic_peek_char(state);
+        if (c != '^' && c != (char)TOK_POWER) {
+            break;
+        }
         state->text_ptr++;
 
         if (!is_numeric(result)) {
@@ -592,7 +596,7 @@ static ErrorCode eval_power(BasicState *state, Value *result)
         }
 
         Value right;
-        err = eval_power(state, &right);  /* Right associative */
+        err = eval_unary(state, &right);  /* Left associative - call unary, not power */
         if (err != ERR_NONE) return err;
 
         if (!is_numeric(&right)) {

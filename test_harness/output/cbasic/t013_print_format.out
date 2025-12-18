@@ -2,18 +2,6 @@ SEMICOLON:
  1  2  3  4  5 
 ABC
  1   2   3 
-COMMA:
- 1             2             3 
-A             B             C
-MIXED:
- 1  2          3  4          5 
-TAB:
-    AT 5
-         AT 10
-
-A        B         C
-SPC:
-A     B          C
 NUMBERS:
  1 
  12 
@@ -22,3 +10,6 @@ NUMBERS:
 -1 
 -123 
  3.14159 
+MIXED:
+VALUE= 42 
+PI= 3.14159 
