@@ -1,9 +1,8 @@
-# This is a forked version of the Microsoft BASIC for 6502 Microprocessor - Version 1.1
-# Details of the original repository below, released by Microsoft.
-# This is a C17 verion based on the original.
-# Tim Buchalka, December 2025.
+## This is a forked version of the Microsoft BASIC for 6502 Microprocessor - Version 1.1
+## This is a C17 verion based on the original.
+## Tim Buchalka, December 2025.
 
-# Original contents from forked repository below.
+## Original contents from forked repository below.
 
 ## Historical Significance
 
@@ -139,3 +138,4 @@ This source code represents the foundation upon which the modern software indust
 ---
 
 *This document represents a crucial piece of computing history - the source code that helped launch the personal computer revolution and established Microsoft as a software industry leader.*
+
