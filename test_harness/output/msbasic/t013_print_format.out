@@ -1,0 +1,24 @@
+SEMICOLON:
+ 1 2 3 4 5
+ABC
+ 1  2  3
+COMMA:
+ 1 2 3
+ABC
+MIXED:
+ 1 2 3 4 5
+TAB:
+AT 5
+AT 10
+ABC
+SPC:
+ABC
+NUMBERS:
+ 1
+ 12
+ 123
+ 1234
+-1
+-123
+ 3.14159
+

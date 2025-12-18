@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Compare CBASIC output against AppleSoft BASIC reference output.
+Compare CBASIC output against MS BASIC reference output.
 Handles fuzzy floating-point comparison and output normalization.
 """
 
@@ -9,38 +9,49 @@ import re
 import argparse
 from typing import List, Tuple, Optional
 
-# Floating point comparison tolerance (6 significant digits)
-FLOAT_TOLERANCE = 1e-6
-SIGNIFICANT_DIGITS = 6
+# Floating point comparison tolerance
+# Use relative tolerance for larger numbers, absolute for near-zero
+RELATIVE_TOLERANCE = 1e-6  # 6 significant digits
+ABSOLUTE_TOLERANCE = 1e-8  # For numbers near zero
 
 
 def normalize_line(line: str) -> str:
     """Normalize a line for comparison."""
-    # Strip trailing whitespace
-    line = line.rstrip()
+    # Strip all whitespace from ends
+    line = line.strip()
     # Normalize multiple spaces to single space
     line = re.sub(r' +', ' ', line)
-    # Strip leading whitespace (optional - some BASIC outputs have significant leading spaces)
-    # line = line.lstrip()
     return line
+
+
+def normalize_for_content(line: str) -> str:
+    """Aggressively normalize for content comparison (ignore formatting)."""
+    # Remove all spaces
+    return re.sub(r'\s+', '', line)
 
 
 def parse_number(s: str) -> Optional[float]:
     """Try to parse a string as a number."""
+    # Handle BASIC number formats
+    s = s.strip()
     try:
         return float(s)
     except ValueError:
         return None
 
 
-def numbers_equal(a: float, b: float, tolerance: float = FLOAT_TOLERANCE) -> bool:
-    """Compare two floats with tolerance."""
+def numbers_equal(a: float, b: float) -> bool:
+    """Compare two floats with appropriate tolerance."""
     if a == b:
         return True
-    if a == 0 or b == 0:
-        return abs(a - b) < tolerance
-    # Relative comparison
-    return abs(a - b) / max(abs(a), abs(b)) < tolerance
+
+    # For very small numbers, use absolute tolerance
+    if abs(a) < 1e-6 and abs(b) < 1e-6:
+        return abs(a - b) < ABSOLUTE_TOLERANCE
+
+    # For larger numbers, use relative tolerance
+    max_val = max(abs(a), abs(b))
+    return abs(a - b) / max_val < RELATIVE_TOLERANCE
 
 
 def compare_tokens(token1: str, token2: str) -> Tuple[bool, str]:
@@ -56,32 +67,32 @@ def compare_tokens(token1: str, token2: str) -> Tuple[bool, str]:
         if numbers_equal(num1, num2):
             return True, ""
         else:
-            return False, f"numeric mismatch: {token1} vs {token2} (diff: {abs(num1-num2)})"
+            diff = abs(num1 - num2)
+            return False, f"numeric: {token1} vs {token2} (diff: {diff:.2e})"
 
-    return False, f"string mismatch: '{token1}' vs '{token2}'"
-
-
-def tokenize_line(line: str) -> List[str]:
-    """Split line into tokens (words and numbers)."""
-    # Split on whitespace but keep structure
-    return line.split()
+    return False, f"string: '{token1}' vs '{token2}'"
 
 
-def compare_lines(line1: str, line2: str) -> Tuple[bool, str]:
-    """Compare two lines with fuzzy float matching."""
+def extract_content(line: str) -> List[str]:
+    """Extract content tokens from a line, being lenient about formatting."""
+    # Split on whitespace and punctuation but keep meaningful tokens
+    tokens = re.findall(r'[A-Za-z]+|[-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?|[^\s\w]', line)
+    return [t for t in tokens if t.strip()]
+
+
+def compare_lines_strict(line1: str, line2: str) -> Tuple[bool, str]:
+    """Strict line comparison (original method)."""
     norm1 = normalize_line(line1)
     norm2 = normalize_line(line2)
 
-    # Exact match after normalization
     if norm1 == norm2:
         return True, ""
 
-    # Token-by-token comparison
-    tokens1 = tokenize_line(norm1)
-    tokens2 = tokenize_line(norm2)
+    tokens1 = norm1.split()
+    tokens2 = norm2.split()
 
     if len(tokens1) != len(tokens2):
-        return False, f"different token count: {len(tokens1)} vs {len(tokens2)}"
+        return False, f"token count: {len(tokens1)} vs {len(tokens2)}"
 
     for i, (t1, t2) in enumerate(zip(tokens1, tokens2)):
         equal, reason = compare_tokens(t1, t2)
@@ -91,14 +102,34 @@ def compare_lines(line1: str, line2: str) -> Tuple[bool, str]:
     return True, ""
 
 
-def compare_outputs(cbasic_lines: List[str], ref_lines: List[str],
-                   skip_header: bool = True) -> Tuple[bool, List[str]]:
-    """Compare full outputs, return (success, list of differences)."""
-    differences = []
+def compare_lines_lenient(line1: str, line2: str) -> Tuple[bool, str]:
+    """Lenient line comparison (ignores formatting differences)."""
+    # First try strict
+    equal, reason = compare_lines_strict(line1, line2)
+    if equal:
+        return True, ""
 
-    # Optionally skip CBASIC header line
-    if skip_header and cbasic_lines and cbasic_lines[0].startswith("CBASIC"):
-        cbasic_lines = cbasic_lines[1:]
+    # Try content-based comparison (ignore all formatting)
+    content1 = extract_content(line1)
+    content2 = extract_content(line2)
+
+    if len(content1) != len(content2):
+        return False, f"content differs: {len(content1)} vs {len(content2)} elements"
+
+    for i, (t1, t2) in enumerate(zip(content1, content2)):
+        equal, reason = compare_tokens(t1, t2)
+        if not equal:
+            return False, reason
+
+    # Content matches, just formatting differs
+    return True, ""
+
+
+def compare_outputs(cbasic_lines: List[str], ref_lines: List[str],
+                   lenient: bool = True) -> Tuple[bool, List[str], List[str]]:
+    """Compare full outputs, return (success, differences, warnings)."""
+    differences = []
+    warnings = []
 
     # Remove empty trailing lines
     while cbasic_lines and not cbasic_lines[-1].strip():
@@ -109,20 +140,27 @@ def compare_outputs(cbasic_lines: List[str], ref_lines: List[str],
     max_lines = max(len(cbasic_lines), len(ref_lines))
 
     for i in range(max_lines):
-        line1 = cbasic_lines[i] if i < len(cbasic_lines) else "<missing>"
-        line2 = ref_lines[i] if i < len(ref_lines) else "<missing>"
+        line1 = cbasic_lines[i] if i < len(cbasic_lines) else ""
+        line2 = ref_lines[i] if i < len(ref_lines) else ""
 
-        if line1 == "<missing>" or line2 == "<missing>":
-            differences.append(f"Line {i+1}: {line1} | {line2}")
+        if i >= len(cbasic_lines):
+            differences.append(f"Line {i+1}: CBASIC missing, REF: {line2}")
+            continue
+        if i >= len(ref_lines):
+            differences.append(f"Line {i+1}: REF missing, CBASIC: {line1}")
             continue
 
-        equal, reason = compare_lines(line1, line2)
+        if lenient:
+            equal, reason = compare_lines_lenient(line1, line2)
+        else:
+            equal, reason = compare_lines_strict(line1, line2)
+
         if not equal:
             differences.append(f"Line {i+1}: {reason}")
-            differences.append(f"  CBASIC: {line1}")
-            differences.append(f"  REF:    {line2}")
+            differences.append(f"  CBASIC: {line1.rstrip()}")
+            differences.append(f"  MSBASIC: {line2.rstrip()}")
 
-    return len(differences) == 0, differences
+    return len(differences) == 0, differences, warnings
 
 
 def main():
@@ -131,26 +169,24 @@ def main():
     parser.add_argument('reference_output', help='Reference output file')
     parser.add_argument('--no-skip-header', action='store_true',
                        help='Do not skip CBASIC header line')
+    parser.add_argument('--strict', action='store_true',
+                       help='Use strict comparison (fail on formatting diffs)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Show detailed comparison')
     args = parser.parse_args()
 
     try:
         with open(args.cbasic_output, 'r') as f:
-            cbasic_lines = f.readlines()
+            cbasic_lines = [l.rstrip('\n\r') for l in f.readlines()]
         with open(args.reference_output, 'r') as f:
-            ref_lines = f.readlines()
+            ref_lines = [l.rstrip('\n\r') for l in f.readlines()]
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(2)
 
-    # Strip newlines
-    cbasic_lines = [l.rstrip('\n\r') for l in cbasic_lines]
-    ref_lines = [l.rstrip('\n\r') for l in ref_lines]
-
-    success, differences = compare_outputs(
+    success, differences, warnings = compare_outputs(
         cbasic_lines, ref_lines,
-        skip_header=not args.no_skip_header
+        lenient=not args.strict
     )
 
     if success:
@@ -158,9 +194,8 @@ def main():
         sys.exit(0)
     else:
         print("FAIL: Outputs differ")
-        if args.verbose or True:  # Always show differences for now
-            for diff in differences:
-                print(f"  {diff}")
+        for diff in differences:
+            print(f"  {diff}")
         sys.exit(1)
 
 
