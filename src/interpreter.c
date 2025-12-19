@@ -78,8 +78,13 @@ BasicState *basic_init(void)
     state->terminal_pos = 0;
     state->null_count = BASIC_NULL_COUNT;
 
-    /* Initialize random number generator with default seed */
-    state->rnd_seed = 12345;
+    /* Initialize random number generator with MS BASIC default seed (RNDX) */
+    /* From m6502.asm line 978: 128, 79, 199, 82, 89 */
+    state->rnd_seed[0] = 0x80;  /* Exponent */
+    state->rnd_seed[1] = 0x4F;  /* Mantissa high */
+    state->rnd_seed[2] = 0xC7;  /* Mantissa mid-high */
+    state->rnd_seed[3] = 0x52;  /* Mantissa mid */
+    state->rnd_seed[4] = 0x59;  /* Mantissa low (extended precision) */
 
     /* Initialize FAC and ARG */
     memset(&state->fac, 0, sizeof(state->fac));
@@ -141,7 +146,12 @@ void basic_reset(BasicState *state)
     }
 
     basic_new(state);
-    state->rnd_seed = 12345;
+    /* Reset RND seed to MS BASIC default */
+    state->rnd_seed[0] = 0x80;
+    state->rnd_seed[1] = 0x4F;
+    state->rnd_seed[2] = 0xC7;
+    state->rnd_seed[3] = 0x52;
+    state->rnd_seed[4] = 0x59;
 }
 
 /*

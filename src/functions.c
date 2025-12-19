@@ -141,38 +141,500 @@ double basic_fn_atn(double x)
 }
 
 /*
- * basic_fn_rnd - Random number generator
+ * basic_fn_rnd - Random number generator (MS BASIC compatible)
  *
- * If x > 0: Return new random number in [0, 1)
- * If x = 0: Return last random number
- * If x < 0: Seed random generator with x, return new random
+ * This implementation matches cbmbasic (Commodore 64 BASIC V2) which uses
+ * the same Microsoft BASIC 6502 codebase.
  *
- * The 6502 uses a simple linear congruential generator.
- * We match that behavior but use a better PRNG for quality.
+ * The algorithm uses the floating-point representation directly:
+ *   1. Multiply previous seed by constant CONRND1
+ *   2. Add constant CONRND2
+ *   3. Swap high and low mantissa bytes
+ *   4. Normalize to produce value in [0, 1)
  *
- * Matches 6502 implementation at line 6353
+ * Key insight: After swapping bytes and forcing exponent to 128,
+ * the NORMAL routine left-shifts the mantissa until bit 7 is set,
+ * decrementing the exponent. This produces values across the full
+ * [0, 1) range, not just [0.5, 1).
  */
+
+/* MS BASIC 5-byte float to double */
+static double msbas_to_double(const uint8_t *f)
+{
+    if (f[0] == 0) return 0.0;
+
+    /* Mantissa with implied leading 1 */
+    uint32_t m = ((uint32_t)(f[1] | 0x80) << 24) |
+                 ((uint32_t)f[2] << 16) |
+                 ((uint32_t)f[3] << 8) |
+                 (uint32_t)f[4];
+
+    double result = (double)m / 4294967296.0;  /* Divide by 2^32 */
+    int exp = (int)f[0] - 128;
+    return ldexp(result, exp);
+}
+
+/* Double to MS BASIC 5-byte float */
+static void double_to_msbas(double d, uint8_t *f)
+{
+    if (d == 0.0) {
+        memset(f, 0, 5);
+        return;
+    }
+
+    int sign = (d < 0) ? 0x80 : 0;
+    d = fabs(d);
+
+    int exp;
+    double mant = frexp(d, &exp);  /* d = mant * 2^exp, 0.5 <= mant < 1 */
+
+    f[0] = (uint8_t)(exp + 128);
+    uint32_t m = (uint32_t)(mant * 4294967296.0);
+
+    f[1] = ((m >> 24) & 0x7F) | sign;
+    f[2] = (m >> 16) & 0xFF;
+    f[3] = (m >> 8) & 0xFF;
+    f[4] = m & 0xFF;
+}
+
+/*
+ * MS BASIC floating-point multiply using exact 6502 shift-and-add algorithm.
+ * This replicates the FMULT/MLTPLY routine from the 6502 BASIC ROM exactly.
+ *
+ * The 6502 algorithm processes FAC mantissa byte-by-byte (FACOV, FACLO, FACMO,
+ * FACMOH, FACHO), doing shift-and-add multiplication for each byte's 8 bits.
+ *
+ * CRITICAL: When a zero byte is processed (MULSHF path), the 6502 code checks
+ * the carry state via SHIFTR. If carry is clear, it performs an extra bit-level
+ * shift through SHFTR3. This affects the final result for certain input patterns
+ * where zero bytes appear in the mantissa with specific carry states.
+ */
+static void msbas_fmult(uint8_t *fac, const uint8_t *arg, uint8_t *ov)
+{
+    if (fac[0] == 0 || arg[0] == 0) {
+        memset(fac, 0, 5);
+        *ov = 0;
+        return;
+    }
+
+    /* MULDIV: Calculate new exponent = exp1 + exp2 - 128 */
+    int new_exp = (int)fac[0] + (int)arg[0] - 128;
+    if (new_exp <= 0) {
+        memset(fac, 0, 5);
+        *ov = 0;
+        return;
+    }
+    if (new_exp > 255) new_exp = 255;
+
+    /* Set up ARG with implied 1 bit */
+    uint8_t argho = arg[1] | 0x80;
+    uint8_t argmoh = arg[2];
+    uint8_t argmo = arg[3];
+    uint8_t arglo = arg[4];
+
+    /* Set up FAC mantissa bytes with implied 1 bit */
+    uint8_t facho = fac[1] | 0x80;
+    uint8_t facmoh = fac[2];
+    uint8_t facmo = fac[3];
+    uint8_t faclo = fac[4];
+    uint8_t facov = *ov;
+
+    /* Clear result accumulator */
+    uint8_t resho = 0;
+    uint8_t resmoh = 0;
+    uint8_t resmo = 0;
+    uint8_t reslo = 0;
+    uint8_t res_ov = 0;
+
+    /* Track carry state across byte processing (MULDIV ends with CLC) */
+    uint8_t carry = 0;
+
+    /* Process each FAC byte through MLTPLY algorithm */
+    /* Order: FACOV, FACLO, FACMO, FACMOH, then FACHO (via MLTPL1) */
+    uint8_t fac_bytes[5] = {facov, faclo, facmo, facmoh, facho};
+
+    for (int i = 0; i < 5; i++) {
+        uint8_t mult_byte = fac_bytes[i];
+        int is_facho = (i == 4);
+
+        /* MLTPLY: JEQ MULSHF - if byte is 0, shift result right */
+        /* But FACHO uses MLTPL1 which skips this check */
+        if (!is_facho && mult_byte == 0) {
+            /* MULSHF: shift result right by one byte */
+            res_ov = reslo;
+            reslo = resmo;
+            resmo = resmoh;
+            resmoh = resho;
+            resho = 0;
+
+            /* SHIFTR: Check if extra bit shift is needed based on carry state.
+             * The 6502 code does: ADC #8, (BMI/BEQ loop), SBC #8, BCS SHFTRT.
+             * When carry entering MULSHF is 0: ADC #8 gives 8, SBC #8 gives 255
+             * with borrow (carry=0), so BCS doesn't branch and SHFTR3 executes.
+             * When carry is 1: ADC #8 gives 9, SBC #8 gives 0 with no borrow
+             * (carry=1), so BCS branches to SHFTRT and we're done.
+             */
+            int a = 8 + carry;  /* ADC #8 */
+            int new_carry = (a >= 256) ? 1 : 0;
+            a &= 0xFF;
+            /* SBC #8 with borrow */
+            int result = a - 8 - (1 - new_carry);
+            if (result < 0) {
+                new_carry = 0;  /* Borrow occurred */
+            } else {
+                new_carry = 1;  /* No borrow */
+            }
+
+            if (new_carry) {
+                /* BCS SHFTRT: done, clear carry */
+                carry = 0;
+            } else {
+                /* Fall through to SHFTR3: one extra bit-level shift.
+                 * SHFTR3 does: ASL RESHO, (INC if carry), ROR RESHO x2,
+                 * then ROR through RESMOH, RESMO, RESLO, and res_ov.
+                 */
+                uint8_t c;
+
+                /* ASL RESHO: shift left, bit 7 to carry */
+                c = (resho >> 7) & 1;
+                resho = (resho << 1) & 0xFF;
+
+                /* BCC SHFTR4, INC RESHO if carry was set */
+                if (c) {
+                    resho = (resho + 1) & 0xFF;
+                }
+
+                /* ROR RESHO (first time) */
+                uint8_t nc = resho & 1;
+                resho = (resho >> 1) | (c << 7);
+                c = nc;
+
+                /* ROR RESHO (second time) */
+                nc = resho & 1;
+                resho = (resho >> 1) | (c << 7);
+                c = nc;
+
+                /* ROR RESMOH */
+                nc = resmoh & 1;
+                resmoh = (resmoh >> 1) | (c << 7);
+                c = nc;
+
+                /* ROR RESMO */
+                nc = resmo & 1;
+                resmo = (resmo >> 1) | (c << 7);
+                c = nc;
+
+                /* ROR RESLO */
+                nc = reslo & 1;
+                reslo = (reslo >> 1) | (c << 7);
+                c = nc;
+
+                /* ROR res_ov (FACOV in 6502) */
+                res_ov = (res_ov >> 1) | (c << 7);
+
+                /* SHFTRT: CLC */
+                carry = 0;
+            }
+            continue;
+        }
+
+        /* MLTPL1: LSR A, ORA #$80 - set up for 8-bit loop */
+        uint8_t a = mult_byte;
+        carry = a & 1;  /* LSR puts bit 0 into carry */
+        a = (a >> 1) | 0x80;    /* LSR then ORA #$80 */
+
+        /* MLTPL2: Process 8 bits via shift-and-add */
+        for (;;) {
+            uint8_t y = a;  /* TAY - save counter */
+
+            /* BCC MLTPL3 - if carry clear, skip add */
+            if (carry) {
+                /* Add ARG to RES with carry propagation */
+                uint16_t sum;
+                sum = (uint16_t)reslo + arglo;
+                reslo = sum & 0xFF;
+                carry = sum >> 8;
+
+                sum = (uint16_t)resmo + argmo + carry;
+                resmo = sum & 0xFF;
+                carry = sum >> 8;
+
+                sum = (uint16_t)resmoh + argmoh + carry;
+                resmoh = sum & 0xFF;
+                carry = sum >> 8;
+
+                sum = (uint16_t)resho + argho + carry;
+                resho = sum & 0xFF;
+                carry = sum >> 8;
+            } else {
+                carry = 0;
+            }
+
+            /* MLTPL3: ROR RESHO, ROR RESMOH, ROR RESMO, ROR RESLO, ROR FACOV */
+            /* Rotate right through all bytes, carry from add goes into bit 7 */
+            uint8_t new_carry;
+
+            new_carry = resho & 1;
+            resho = (resho >> 1) | (carry ? 0x80 : 0);
+            carry = new_carry;
+
+            new_carry = resmoh & 1;
+            resmoh = (resmoh >> 1) | (carry ? 0x80 : 0);
+            carry = new_carry;
+
+            new_carry = resmo & 1;
+            resmo = (resmo >> 1) | (carry ? 0x80 : 0);
+            carry = new_carry;
+
+            new_carry = reslo & 1;
+            reslo = (reslo >> 1) | (carry ? 0x80 : 0);
+            carry = new_carry;
+
+            new_carry = res_ov & 1;
+            res_ov = (res_ov >> 1) | (carry ? 0x80 : 0);
+
+            /* TYA, LSR A - get next bit into carry, decrement counter */
+            carry = y & 1;
+            a = y >> 1;
+
+            /* BNE MLTPL2 - loop while counter != 0 */
+            if (a == 0) break;
+        }
+    }
+
+    /* MOVFR + NORMAL: Move result to FAC and normalize */
+    /* Normalize by shifting left until bit 7 of resho is set */
+    while (new_exp > 0 && (resho & 0x80) == 0) {
+        /* Shift all bytes left, bringing in bits from overflow */
+        uint8_t c = (res_ov >> 7) & 1;
+        res_ov <<= 1;
+
+        uint8_t new_carry = (reslo >> 7) & 1;
+        reslo = (reslo << 1) | c;
+        c = new_carry;
+
+        new_carry = (resmo >> 7) & 1;
+        resmo = (resmo << 1) | c;
+        c = new_carry;
+
+        new_carry = (resmoh >> 7) & 1;
+        resmoh = (resmoh << 1) | c;
+        c = new_carry;
+
+        resho = (resho << 1) | c;
+
+        new_exp--;
+    }
+
+    if (new_exp <= 0) {
+        memset(fac, 0, 5);
+        *ov = 0;
+        return;
+    }
+
+    /* Store result */
+    fac[0] = (uint8_t)new_exp;
+    fac[1] = resho & 0x7F;  /* Clear implied 1 bit for storage */
+    fac[2] = resmoh;
+    fac[3] = resmo;
+    fac[4] = reslo;
+    *ov = res_ov;
+}
+
+/*
+ * MS BASIC floating-point add using integer arithmetic
+ * Uses extended 40-bit precision with overflow byte for accuracy
+ */
+static void msbas_fadd(uint8_t *fac, const uint8_t *arg, uint8_t *ov)
+{
+    if (arg[0] == 0) return;
+    if (fac[0] == 0) {
+        memcpy(fac, arg, 5);
+        *ov = 0;
+        return;
+    }
+
+    /* Get mantissas with implied leading 1, extended with ov byte */
+    uint64_t m1 = (((uint64_t)(fac[1] | 0x80) << 24) |
+                   ((uint64_t)fac[2] << 16) |
+                   ((uint64_t)fac[3] << 8) |
+                   (uint64_t)fac[4]) << 8 | *ov;
+    uint64_t m2 = (((uint64_t)(arg[1] | 0x80) << 24) |
+                   ((uint64_t)arg[2] << 16) |
+                   ((uint64_t)arg[3] << 8) |
+                   (uint64_t)arg[4]) << 8;
+
+    int exp1 = fac[0];
+    int exp2 = arg[0];
+    int exp_diff = exp1 - exp2;
+
+    /* Align exponents - use 64-bit threshold to match 6502 behavior */
+    if (exp_diff > 64) return;  /* arg is negligible */
+    if (exp_diff < -64) {
+        memcpy(fac, arg, 5);
+        *ov = 0;
+        return;
+    }
+
+    if (exp_diff > 0) {
+        m2 >>= exp_diff;
+    } else if (exp_diff < 0) {
+        m1 >>= -exp_diff;
+        exp1 = exp2;
+    }
+
+    /* Add mantissas */
+    uint64_t sum = m1 + m2;
+
+    /* Handle overflow */
+    if (sum >= (1ULL << 40)) {
+        sum >>= 1;
+        exp1++;
+    }
+
+    /* Extract result */
+    uint32_t result = (uint32_t)(sum >> 8);
+    *ov = (uint8_t)(sum & 0xFF);
+
+    /* Normalize if needed */
+    while (exp1 > 0 && (result & 0x80000000) == 0 && result != 0) {
+        result = (result << 1) | (*ov >> 7);
+        *ov <<= 1;
+        exp1--;
+    }
+
+    if (exp1 <= 0 || exp1 > 255 || result == 0) {
+        memset(fac, 0, 5);
+        *ov = 0;
+        return;
+    }
+
+    /* Store result */
+    fac[0] = (uint8_t)exp1;
+    fac[1] = (result >> 24) & 0x7F;
+    fac[2] = (result >> 16) & 0xFF;
+    fac[3] = (result >> 8) & 0xFF;
+    fac[4] = result & 0xFF;
+}
+
 double basic_fn_rnd(BasicState *state, double x)
 {
+    /*
+     * Constants from C64 BASIC ROM (same as cbmbasic uses).
+     * CONRND1 = multiplier (approximately 11879546)
+     * CONRND2 = addend (approximately 3.927677739e-8)
+     */
+    static const uint8_t CONRND1[5] = {0x98, 0x35, 0x44, 0x7A, 0x00};
+    static const uint8_t CONRND2[5] = {0x68, 0x28, 0xB1, 0x46, 0x00};
+
     if (state == NULL) {
         return 0.0;
     }
 
+    uint8_t fac[5];   /* FAC: exp, ho, moh, mo, lo */
+    uint8_t ov = 0;   /* Overflow byte for extended precision */
+
     if (x < 0.0) {
-        /* Seed the generator */
-        state->rnd_seed = (uint32_t)(fabs(x) * 65536.0);
-        if (state->rnd_seed == 0) {
-            state->rnd_seed = 1;
+        /* Negative: seed from argument, then swap and normalize */
+        double_to_msbas(fabs(x), fac);
+        ov = 0;
+        /* Jump to byte swap/normalize (skip multiply/add) */
+        goto rnd_swap;
+    }
+
+    if (x == 0.0) {
+        /* Zero: return current seed without changing it */
+        return msbas_to_double(state->rnd_seed);
+    }
+
+    /* Positive: multiply and add using MS BASIC integer math */
+    memcpy(fac, state->rnd_seed, 5);
+    ov = 0;
+    msbas_fmult(fac, CONRND1, &ov);
+    msbas_fadd(fac, CONRND2, &ov);
+
+rnd_swap:
+    /* Set implied 1 bit before swap (FAC always has implied 1 visible in 6502) */
+    fac[1] |= 0x80;
+
+    /* Swap FACHO (fac[1]) <-> FACLO (fac[4]) */
+    {
+        uint8_t tmp = fac[1];
+        fac[1] = fac[4];
+        fac[4] = tmp;
+    }
+    /* Swap FACMOH (fac[2]) <-> FACMO (fac[3]) - C64/Commodore style */
+    {
+        uint8_t tmp = fac[2];
+        fac[2] = fac[3];
+        fac[3] = tmp;
+    }
+
+    /* STRNEX: Set up for normalization.
+     * Note: Do NOT clear bit 7 of fac[1] here - after swap, fac[1] contains
+     * the old low byte which has 8 data bits. The "clear sign" in 6502
+     * refers to the separate FACSIGN register, not to bit 7 of the mantissa. */
+    ov = fac[0];     /* FACOV = FACEXP (save exponent for normalization) */
+    fac[0] = 0x80;   /* FACEXP = 128 (so result will be < 1) */
+
+    /* NORMAL: Shift mantissa left until bit 7 of ho is set */
+    while (fac[0] > 0 && (fac[1] & 0x80) == 0) {
+        /* Shift all bytes left, bringing in ov bit by bit */
+        uint8_t carry = (ov >> 7) & 1;  /* Top bit of ov */
+        ov <<= 1;  /* Shift ov left */
+
+        /* Shift mantissa left with carry from ov */
+        uint8_t new_lo = (fac[4] << 1) | carry;
+        carry = (fac[4] >> 7) & 1;
+
+        uint8_t new_mo = (fac[3] << 1) | carry;
+        carry = (fac[3] >> 7) & 1;
+
+        uint8_t new_moh = (fac[2] << 1) | carry;
+        carry = (fac[2] >> 7) & 1;
+
+        uint8_t new_ho = (fac[1] << 1) | carry;
+
+        fac[4] = new_lo;
+        fac[3] = new_mo;
+        fac[2] = new_moh;
+        fac[1] = new_ho;
+
+        fac[0]--;  /* Decrement exponent */
+    }
+
+    /* Handle underflow - if exp went to 0, result is 0 */
+    if (fac[0] == 0) {
+        memset(fac, 0, 5);
+        ov = 0;
+    }
+
+    /* ROUND: If ov bit 7 is set, round up the mantissa (MOVMF behavior) */
+    if (ov & 0x80) {
+        /* Increment low byte, propagate carry */
+        fac[4]++;
+        if (fac[4] == 0) {
+            fac[3]++;
+            if (fac[3] == 0) {
+                fac[2]++;
+                if (fac[2] == 0) {
+                    fac[1]++;
+                    if (fac[1] == 0) {
+                        /* Overflow - shift right and increment exponent */
+                        fac[1] = 0x80;
+                        fac[0]++;
+                    }
+                }
+            }
         }
     }
 
-    if (x != 0.0) {
-        /* Generate new random number using LCG (matching 6502 style) */
-        state->rnd_seed = state->rnd_seed * 1103515245 + 12345;
-    }
+    /* Store result back to RNDX (clear implied 1 bit like MOVMF does) */
+    fac[1] &= 0x7F;
+    memcpy(state->rnd_seed, fac, 5);
 
-    /* Convert to [0, 1) */
-    return (double)(state->rnd_seed & 0x7FFFFFFF) / 2147483648.0;
+    /* Return the result as a double */
+    return msbas_to_double(state->rnd_seed);
 }
 
 /*

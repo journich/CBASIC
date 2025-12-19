@@ -401,8 +401,9 @@ typedef struct {
     char input_buffer[BASIC_LINE_MAX + 1];
     size_t input_pos;
 
-    /* Random number generator state */
-    uint32_t rnd_seed;          /* RND seed (RNDX in 6502) */
+    /* Random number generator state - MS BASIC float format */
+    /* RNDX in 6502: [exp, mantissa_hi, mantissa_mh, mantissa_mo, mantissa_lo] */
+    uint8_t rnd_seed[5];        /* RND seed in MS BASIC float format */
 
     /* Memory simulation for PEEK/POKE */
     uint8_t *memory;            /* Simulated memory space */
